@@ -1,0 +1,116 @@
+const express = require('express');
+const router = express.Router();
+const md5 = require('md5');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// Đảm bảo thư mục upload tồn tại để tránh lỗi hệ thống
+const uploadDir = 'public/uploads/';
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+    destination: uploadDir,
+    filename: (req, file, cb) => {
+        cb(null, Date.now() + path.extname(file.originalname));
+    }
+});
+const upload = multer({ storage });
+
+module.exports = (db) => {
+    
+    router.get('/status', (req, res) => {
+        res.json({ message: "Server Node.js đang hoạt động tốt!" });
+    });
+
+    // API Đăng nhập
+    router.post('/login', (req, res) => {
+        const { username, password } = req.body;
+        const hashedPassword = md5(password);
+
+        const sql = "SELECT * FROM kdd_users WHERE username = ? AND password_hash = ?";
+        db.query(sql, [username, hashedPassword], (err, data) => {
+            if (err) return res.status(500).json(err);
+            if (data.length > 0) {
+                return res.json({ message: "Success", user: data[0] });
+            } else {
+                return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
+            }
+        });
+    });
+
+    // API nhận file từ Editor - ĐÃ SỬA: Thay 'app' thành 'router'
+    router.post('/upload-editor', upload.single('file'), (req, res) => {
+      if (!req.file) return res.status(400).json({ error: 'Không có file' });
+      const location = `http://localhost:5000/uploads/${req.file.filename}`;
+      res.json({ location });
+    });
+
+    // API Tạo bài viết mới
+    router.post('/addPost', upload.single('thumbnail'), (req, res) => {
+        // Lấy dữ liệu từ FormData gửi lên
+        const { category_id, author_id, title, slug, summary, content, status } = req.body;
+        
+        // Lưu đường dẫn ảnh thực tế vào Database
+        const thumbnailPath = req.file ? `/uploads/${req.file.filename}` : null;
+
+        const sql = `INSERT INTO kdd_posts (category_id, author_id, title, slug, summary, content, thumbnail, status, published_at, created_at) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`;
+        
+        db.query(sql, [category_id || null, author_id || 1, title, slug, summary, content, thumbnailPath, status || 'draft'], (err, result) => {
+            if (err) {
+                console.error("Lỗi MySQL:", err);
+                return res.status(500).json({ message: "Lỗi lưu Database", error: err });
+            }
+            res.status(200).json({ message: "Thêm bài viết thành công", postId: result.insertId });
+        });
+    });
+
+     // API Tạo danh mục bài viết mới
+    router.post('/addCategoryPost', (req, res) => {
+        // Lấy dữ liệu từ FormData gửi lên
+        const { title, slug, content} = req.body;
+        
+        // Lưu đường dẫn ảnh thực tế vào Database
+        const thumbnailPath = req.file ? `/uploads/${req.file.filename}` : null;
+
+        const sql = `INSERT INTO kdd_category (title, slug, content, thumbnail, status, created_at) 
+                    VALUES (?, ?, ?, ?, ?, NOW())`;
+        
+        db.query(sql, [title, slug, content], (err, result) => {
+            if (err) {
+                console.error("Lỗi MySQL:", err);
+                return res.status(500).json({ message: "Lỗi lưu Database", error: err });
+            }
+            res.status(200).json({ message: "Thêm bài viết thành công", postId: result.insertId });
+        });
+    });
+
+    // API lấy tất cả bài viết kèm thông tin liên quan
+    router.get('/getAllPost', (req, res) => {
+        const sql = `
+            SELECT 
+                p.*, 
+                u.full_name AS author_name,
+                c.title AS category_name,
+                c.slug AS category_slug
+            FROM kdd_posts p
+            LEFT JOIN kdd_users u ON p.author_id = u.id
+            LEFT JOIN kdd_categories c ON p.category_id = c.id
+            WHERE p.status = 'published'
+            ORDER BY p.created_at DESC
+        `;
+
+        db.query(sql, (err, results) => {
+            if (err) {
+                console.error("Lỗi truy vấn SQL:", err);
+                return res.status(500).json({ message: "Lỗi Server" });
+            }
+            res.json(results);
+        });
+    });
+
+    return router;
+};
