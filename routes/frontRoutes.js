@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 
 module.exports = (db) => {
-
     // API lấy tất cả bài viết kèm thông tin liên quan
     router.get('/getAllPost', (req, res) => {
         const sql = `
