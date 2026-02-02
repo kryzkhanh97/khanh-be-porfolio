@@ -47,21 +47,6 @@ module.exports = (db) => {
       res.json({ location });
     });
 
-     // API Tạo danh mục bài viết mới
-    router.post('/addCategoryPost', (req, res) => {
-        const { title, slug, content} = req.body;
-        const thumbnailPath = req.file ? `/uploads/${req.file.filename}` : null;
-        const sql = `INSERT INTO kdd_category (title, slug, content, thumbnail, status, created_at) 
-                    VALUES (?, ?, ?, ?, ?, NOW())`;
-        db.query(sql, [title, slug, content], (err, result) => {
-            if (err) {
-                console.error("Lỗi MySQL:", err);
-                return res.status(500).json({ message: "Lỗi lưu Database", error: err });
-            }
-            res.status(200).json({ message: "Thêm bài viết thành công", postId: result.insertId });
-        });
-    });
-
     // API lấy tất cả danh mục
     router.get('/getAllCategory', (req, res) => {
         const sql = `SELECT * FROM kdd_categories`;
@@ -72,6 +57,34 @@ module.exports = (db) => {
             }
             res.json(result);
         })
+    });
+
+    // API Tạo danh mục mới
+    router.post('/addCategory', (req, res) => {
+        const { title, slug ,description } = req.body;
+        const sql = `INSERT INTO kdd_categories (title, slug, description, created_at) 
+                    VALUES (?, ?, ?, NOW())`;
+        db.query(sql, [title, slug, description], (err, result) => {
+            if (err) {
+                console.error("Lỗi MySQL:", err);
+                return res.status(500).json({ message: "Lỗi lưu Database", error: err });
+            }
+            res.status(200).json({ message: "Thêm danh mục thành công", categoryId: result.insertId });
+        });
+    });
+
+    // API xóa danh mục theo ID
+    router.delete('/deleteCategory/:id', (req, res) => {
+        const cateId = req.params.id;
+        const sql = `DELETE FROM kdd_categories WHERE id = ?`;
+
+        db.query(sql, [cateId], (err, results) => {
+            if (err) {
+                console.error("Lỗi truy vấn SQL:", err);
+                return res.status(500).json({ message: "Lỗi Server" });
+            }
+            res.json(results);
+        });
     });
 
     // API lấy tất cả bài viết kèm thông tin liên quan
@@ -90,10 +103,25 @@ module.exports = (db) => {
         `;
         db.query(sql, (err, results) => {
             if (err) {
-                console.error("Lỗi truy vấn SQL:", err);
+                console.error("Lỗi MySQL:", err);
                 return res.status(500).json({ message: "Lỗi Server" });
             }
             res.json(results);
+        });
+    });
+    
+    // API xử lý Table bài viết
+    router.get('/getTablePosts', (req, res) => {
+        const sql = `
+            SELECT p.*, u.full_name AS author_name, c.title AS category_name
+            FROM kdd_posts p
+            LEFT JOIN kdd_users u ON p.author_id = u.id
+            LEFT JOIN kdd_categories c ON p.category_id = c.id
+            ORDER BY p.created_at DESC`;
+
+        db.query(sql, (err, results) => {
+            if (err) return res.status(500).json(err);
+            res.json(results); 
         });
     });
 
